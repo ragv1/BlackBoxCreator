@@ -21,6 +21,7 @@ namespace BlackBox
         private const string ERROR = "ERROR";
         private const string SAVE_PATIENTS_FINISHED_TO_DB = "SAVE_PATIENTS_FINISHED_TO_DB";
         private const string SEPARATOR = "#";
+        private const string HANDSHAKE_INTERNAL_EVENT = "Connect";
 
 
 
@@ -39,7 +40,7 @@ namespace BlackBox
             if (eventRecieved == CREDENTIALS)
             {
                 var credentials = getDataFromString(eventPlusData);
-                this.output1("Connect");
+                this.output1(HANDSHAKE_INTERNAL_EVENT); // Notify handshake program that the connection has been stablished
             }
             else if (eventRecieved == CONNECT)
             {
@@ -283,6 +284,33 @@ namespace BlackBox
         public string range { get; set; }
         public string units { get; set; }
 
+    }
+
+    public static class EVENT_TYPES
+    {
+        public static readonly string ACTION = "Action";
+        public static readonly string ERROR = "Error";
+        public static readonly string NOTIFICATION = "Notification";
+        public static readonly string DATA = "Data";
+    }
+
+    public static class DEVICE_EVENTS
+    {
+        public static readonly string STOP = "DeviceStop";
+        public static readonly string START = "DeviceStart";
+        public static readonly string STARTING = "DeviceStarting";
+        public static readonly string BLACKBOXEVENT1 = "Output1";
+        public static readonly string BLACKBOXEVENT2 = "Output2";
+    }
+
+    public static class CONNECTION_CLASS_EVENT
+    {
+        public static readonly string CONNECTED = "Connect";
+        public static readonly string DISCONECTED = "Disconnect";
+        public static readonly string RECONNECT = "Reconnect";
+        public static readonly string CONNECTFAILED = "CantConnect";
+        public static readonly string OUTGOINGMESSAGE = "Saliente";
+        public static readonly string INCOMINGMESSAGE = "Entrante";
     }
 
 }
