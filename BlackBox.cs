@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace BlackBox
+namespace BlackBoxHumacount5D
 {
     public class BlackBox : IBlackBox.IBlackBox
     {
@@ -17,12 +17,11 @@ namespace BlackBox
         public string name;
         private const string CONNECT = "connect";
         private const string LOGIN = "LOGIN";
-        private const string CREDENTIALS = "CREDENTIALS";
-        private const string ERROR = "ERROR";
+        /*private const string CREDENTIALS = "CREDENTIALS";*/
         private const string SAVE_PATIENTS_FINISHED_TO_DB = "SAVE_PATIENTS_FINISHED_TO_DB";
         private const string SEPARATOR = "#";
         private const string HANDSHAKE_INTERNAL_EVENT = "Connect";
-
+        private const string defaultBirthdate = " 20160101";
 
 
         public BlackBox(string deviceId)
@@ -30,21 +29,29 @@ namespace BlackBox
             this.name = deviceId;
 
         }
-        /*INPUT FROM SERVER SOCKETIO
-         eventPlusData = EVENTFROMSOCKETIO#ALL THE DATA SEND FROM DE SERVER OR NOTHING
-         */
+
+        // INPUT FROM SERVER SOCKETIO
+        // ventPlusData = EVENTFROMSOCKETIO#ALL THE DATA SEND FROM DE SERVER OR NOTHING
+
         public void Input1(string eventPlusData)
         {
             var eventRecieved = getEventFromString(eventPlusData);
 
-            if (eventRecieved == CREDENTIALS)
+            if (eventRecieved == SOCKETIO_EVENTS.CREDENTIALS )
             {
                 var credentials = getDataFromString(eventPlusData);
-                this.output1(HANDSHAKE_INTERNAL_EVENT); // Notify handshake program that the connection has been stablished
+                // Notify handshake program that the connection has been stablished
+                this.output1(CONNECTION_CLASS_EVENT.CONNECTED); 
             }
-            else if (eventRecieved == CONNECT)
+            else if (eventRecieved == SOCKETIO_EVENTS.CONNECT)
             {
                 this.output1(LOGIN + SEPARATOR + this.name);
+            }
+            else if (eventRecieved == SOCKETIO_EVENTS.PATIENTS_TO_BE_PROCESS_FOR_DEVICES)
+            {
+                //transform JSON --> astm File
+                /*var lisResult*/
+               /* this.output2(SOCKETIO_EVENTS.SAVE_PATIENTS_FINISHED_TO_DB + SEPARATOR + lisResultStringified);*/
             }
             else
             {
@@ -54,14 +61,14 @@ namespace BlackBox
         }
 
         /*
-         INPUT FROM HUMACOUNT 5D
+         INPUT FROM HS200
          */
-        public void Input2(string data)
+        public void Input2(string fileStringContent)
         {
-            string lisResultStringified = applyTransform2(data);
+            string lisResultStringified = applyTransform2(fileStringContent);
             if (lisResultStringified != null || lisResultStringified != String.Empty)
             {
-                this.output1(SAVE_PATIENTS_FINISHED_TO_DB + SEPARATOR + lisResultStringified);
+                this.output1(SOCKETIO_EVENTS.SAVE_PATIENTS_FINISHED_TO_DB + SEPARATOR + lisResultStringified);
             }
             else
             {
@@ -90,9 +97,7 @@ namespace BlackBox
 
         }
 
-        /*
-         * TRANSFORMATION  5D --> LIS 
-         */
+        // TRANSFORMATION  5D --> LIS  
         private string applyTransform2(string data)
         {
 
@@ -132,6 +137,50 @@ namespace BlackBox
             return data.Substring(end + 1);
         }
     }
+
+
+    public static class EVENT_TYPES
+    {
+        public static readonly string ACTION = "Action";
+        public static readonly string ERROR = "Error";
+        public static readonly string NOTIFICATION = "Notification";
+        public static readonly string DATA = "Data";
+    }
+
+    public static class DEVICE_EVENTS
+    {
+        public static readonly string STOP = "DeviceStop";
+        public static readonly string START = "DeviceStart";
+        public static readonly string STARTING = "DeviceStarting";
+        public static readonly string BLACKBOXEVENT1 = "Output1";
+        public static readonly string BLACKBOXEVENT2 = "Output2";
+    }
+
+    public static class CONNECTION_CLASS_EVENT
+    {
+        public static readonly string CONNECTED = "Connect";
+        public static readonly string DISCONECTED = "Disconnect";
+        public static readonly string RECONNECT = "Reconnect";
+        public static readonly string CONNECTFAILED = "CantConnect";
+        public static readonly string OUTGOINGMESSAGE = "Saliente";
+        public static readonly string INCOMINGMESSAGE = "Entrante";
+    }
+
+    public static class SOCKETIO_EVENTS
+    {
+        public static readonly string LOGIN = "LOGIN";
+        public static readonly string CREDENTIALS = "CREDENTIALS";
+        public static readonly string DEVICES_ONLINE = "WICH_DEVICES_ARE_ONLINE";
+        public static readonly string VERBOSE_MODE="INCREASE_CONSOLE_OUTPUT";
+        public static readonly string ERROR = "ERROR";
+        public static readonly string SAVE_PATIENTS_FINISHED_TO_DB = "SAVE_PATIENTS_FINISHED_TO_DB";
+        public static readonly string PATIENTS_TO_BE_PROCESS_FOR_DEVICES = "PATIENTS_TO_PROCESS";
+        public static readonly string GET_PATIENTS_TO_BE_PROCESS_FOR_DEVICE="GET_PATIENTS_TO_BE_PROCESS_FOR_DEVICE";
+        public static readonly string GET_SPECIFIC_PATIENTS_TO_BE_PROCESS_FOR_DEVICE = "GET_SPECIFIC_PATIENTS_TO_BE_PROCESS_FOR_DEVICE";
+        public static readonly string CONNECT = "connect";
+    }
+
+    // HUMACOUNT 5D METHODS
 
     public class HematologyResult
     {
@@ -270,6 +319,7 @@ namespace BlackBox
 
 
     }
+
     public class Segments
     {
         public string MSH { get; set; }
@@ -284,33 +334,6 @@ namespace BlackBox
         public string range { get; set; }
         public string units { get; set; }
 
-    }
-
-    public static class EVENT_TYPES
-    {
-        public static readonly string ACTION = "Action";
-        public static readonly string ERROR = "Error";
-        public static readonly string NOTIFICATION = "Notification";
-        public static readonly string DATA = "Data";
-    }
-
-    public static class DEVICE_EVENTS
-    {
-        public static readonly string STOP = "DeviceStop";
-        public static readonly string START = "DeviceStart";
-        public static readonly string STARTING = "DeviceStarting";
-        public static readonly string BLACKBOXEVENT1 = "Output1";
-        public static readonly string BLACKBOXEVENT2 = "Output2";
-    }
-
-    public static class CONNECTION_CLASS_EVENT
-    {
-        public static readonly string CONNECTED = "Connect";
-        public static readonly string DISCONECTED = "Disconnect";
-        public static readonly string RECONNECT = "Reconnect";
-        public static readonly string CONNECTFAILED = "CantConnect";
-        public static readonly string OUTGOINGMESSAGE = "Saliente";
-        public static readonly string INCOMINGMESSAGE = "Entrante";
     }
 
 }

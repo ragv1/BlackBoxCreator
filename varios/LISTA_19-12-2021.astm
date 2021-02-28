@@ -1,0 +1,23 @@
+H|\^&|||HS100^V1.0|||||Host||P|1|20160920
+ P|1||00004|QUIMICA|GERMAN VENTURA|RAMON AMBIORIX|19850914|MALE|||||||||||||||||||||||||
+ C|1|||
+ O|1|||Alb|False||||||||||Serum|||||||||||||||
+ O|2|||Amy|False||||||||||Serum|||||||||||||||
+ O|3|||Bilda|False||||||||||Serum|||||||||||||||
+ O|4|||Bilta|False||||||||||Serum|||||||||||||||
+ O|6|||Chol|False||||||||||Serum|||||||||||||||
+ P|2||00005|QUIMICA|ARBAJE|RAQUEL|19600812|FEMALE|||||||||||||||||||||||||
+ C|2|||
+ O|1|||CK|False||||||||||Serum|||||||||||||||
+ O|2|||CK-MB|False||||||||||Serum|||||||||||||||
+ O|3|||Cl|False||||||||||Serum|||||||||||||||
+ O|4|||CreaA|False||||||||||Serum|||||||||||||||
+ O|6|||Glu|False||||||||||Serum|||||||||||||||
+ P|3||00006|HEMATOLOGIA|JIMENEZ|SANTANA|19880903|MALE|||||||||||||||||||||||||
+ C|3|||
+ O|1|||LDH|False||||||||||Serum|||||||||||||||
+ O|2|||LDL|False||||||||||Serum|||||||||||||||
+ O|4|||CHOL|False||||||||||Serum|||||||||||||||
+ O|5|||TRIG|False||||||||||Serum|||||||||||||||
+ O|6|||GLU|False||||||||||Serum|||||||||||||||
+L||N
