@@ -18,6 +18,7 @@ namespace BlackBox
         private const string LOGIN = "LOGIN";
         private const string SEPARATOR = "#";
         private InterfaceHS200 hs200Interface;
+        public bool testing = false;
 
         // CONNECTION1: SOCKETIO
         // CONNECTION2: FILEMANAGER
@@ -45,7 +46,6 @@ namespace BlackBox
             if (eventRecieved == SOCKETIO_EVENTS.CREDENTIALS)
             {
                 var strCredentials = getDataFromString(eventPlusData); 
-                /*Console.WriteLine($"{strCredentials} <--The credentials");*/
                 this.hs200Interface = new InterfaceHS200(strCredentials);
                 this.output1(CONNECTION_CLASS_EVENT.CONNECTED); // Emit connect event to UI but Not to the server;
             }
@@ -78,7 +78,7 @@ namespace BlackBox
         /*OUTPUT TO LIS*/
         public void output1(string data)
         {
-
+            if (testing==true) return;
             this.Output1(this, data);
         }
 
@@ -95,12 +95,14 @@ namespace BlackBox
                 this.output1(e.Message);
             }
             if (lisResultStringified == String.Empty) return;
+ 
             this.output1(SOCKETIO_EVENTS.SAVE_PATIENTS_FINISHED_TO_DB + SEPARATOR + lisResultStringified);
         }
 
         /* OUTPUT TO HS200 */
         public void output2(string data)
         {
+            if (testing == true) return;
             this.Output2(this, data);
         }
 
@@ -114,8 +116,18 @@ namespace BlackBox
         private string astmStringToJsonString(string strFileContent)
         {
             if (hs200Interface.device == String.Empty) return String.Empty;
-            hs200Interface.StartInterface(strFileContent);
+            if (!hs200Interface.StartInterface(strFileContent)) { this.output1("BLACKBOX MAL FORMATO DEL ARCHIVO");};
             var results = hs200Interface.getResultToLis();
+            if (testing==true)
+            {
+                Console.WriteLine("Input1 Contenido del Archivo: ");
+                Console.WriteLine("------------------------------------------------------------------------------\n");
+                Console.WriteLine(strFileContent);
+                Console.WriteLine("------------------------------------------------------------------------------\n");
+                Console.WriteLine("Estos son los resultados: ");
+                Console.WriteLine("------------------------------------------------------------------------------\n");
+                Console.WriteLine(results);
+            }
             return results;
         }
 
@@ -139,13 +151,13 @@ namespace BlackBox
         }
     }
 
-
     public class InterfaceHS200
     {
         private const string START_TOKEN = "H|";
         private const string END_TOKEN = "L||N\r\n";
+        private const string space = " ";
         public List<Patients> patientList = new List<Patients>();
-        public List<Test> testList ;
+        public List<Test> serverTestList ;
         public string device = String.Empty;
         
 
@@ -158,11 +170,10 @@ namespace BlackBox
             }
             catch (Exception)
             {
-                Console.WriteLine("error-> Could not deserialize credentials");
                 localCredentials = new Credentials() { name="NullName", id="NullId", deviceTests= new List<Test>()};
             }
             device = localCredentials.name;
-            testList = localCredentials.deviceTests;
+            serverTestList = localCredentials.deviceTests;
         }
 
         private void createListOfPatients(List<string> arrStrPatients)
@@ -182,27 +193,34 @@ namespace BlackBox
             return astmString.StartsWith(START_TOKEN) & astmString.EndsWith(END_TOKEN);
         }
 
-        private List<Test> filterAllowedTest(List<Test> _tests)
+        private List<Test> filterAndTransform(List<Test> _tests)
         {
-            return _tests.Where(test => testList.Select(testItem => testItem.mapTo.ToLower()).Contains(test.parameterName.ToLower())).ToList();
+            return _tests.Where(test => serverTestList.Select(testItem => testItem.mapTo.ToLower()).Contains(test.parameterName.ToLower()))
+                         .Select(test=> {
+                             test.parameterName = serverTestList
+                                                    .Find(t => t.mapTo.ToLower() == test.parameterName.ToLower())
+                                                    .parameterName
+                                                    .ToLower();
+                             return test;
+                         })         
+                        .ToList();
         }
 
         private List<Patients> extractAllTestNotAllowedByLis(List<Patients> _patientList)
         {
             foreach (var patient in _patientList)
             {
-                patient.results = filterAllowedTest(patient.results);
-                formatToSend(patient.results);
+                patient.results = filterAndTransform(patient.results);
+                deleteMapToProperty(patient.results);
             }
 
             return _patientList;
         }
 
-        private void formatToSend(List<Test> _tests)
+        private void deleteMapToProperty(List<Test> _tests)
         {
             foreach (var test in _tests)
             {
-                test.parameterName = test.parameterName.ToLower();
                 test.mapTo = null;
             }
         }
@@ -213,8 +231,10 @@ namespace BlackBox
             {
                 IgnoreNullValues = true
             };
+            
             var processedList = extractAllTestNotAllowedByLis(patientList);
-            return JsonSerializer.Serialize(processedList, options);
+            var result = processedList.Select(patient => patient.results).SelectMany(x=>x);
+            return JsonSerializer.Serialize(result, options);
         }
 
         public string getResultToHs200(string data)
@@ -233,33 +253,33 @@ namespace BlackBox
             {
                 var unformatedDate = patient.birthDate==null ? defaultDate : patient.birthDate;
                 var date = DateTime.Parse(unformatedDate, null, System.Globalization.DateTimeStyles.RoundtripKind);
-                fileBody += $"P|{++counter}||{patient.petitionNo}|QUIMICA|{patient.lastName}|{patient.firstName}|{date.ToString("yyyyMMdd")}|{patient.sex}|||||||||||||||||||||||||\r\n";
-                fileBody += $"C|{counter}|||\r\n";
+                fileBody += $"{space}P|{++counter}||{patient.petitionNo}|QUIMICA|{patient.lastName}|{patient.firstName}|{date.ToString("yyyyMMdd")}|{patient.sex}|||||||||||||||||||||||||\r\n";
+                fileBody += $"{space}{space}C|{counter}|||\r\n";
                 var testCounter = 0;
                 foreach (var t in patient.results)
                 {
                     var parameterName = mapParameterTo(t.parameterName);
                     if (parameterName == null) continue;
-                    fileBody += $"O|{++testCounter}|||{parameterName}|{patient.emergency}||||||||||Serum|||||||||||||||\r\n";
+                    fileBody += $"{space}{space}O|{++testCounter}|||{parameterName}|{patient.emergency}||||||||||Serum|||||||||||||||\r\n";
                 }
             }
-
             return $"{startOfFile}{fileBody}{endOfFile}";
         }
 
         private string mapParameterTo(string parameterName)
         {
-            var resultList = testList.Where(testItem => testItem.parameterName.ToLower() == parameterName.ToLower()).ToList();
+            var resultList = serverTestList.Where(testItem => testItem.parameterName.ToLower() == parameterName.ToLower()).ToList();
             var result = resultList.Count>0?resultList.First().mapTo:"";
             return result; 
         }
 
-        public void StartInterface(string astmFileContent)
+        public bool StartInterface(string astmFileContent)
         {
-            if (!isValidFile(astmFileContent)) return;
-            string[] stringSeparators = new string[] { "\r\n P|" };
+            if (!isValidFile(astmFileContent)) return false;
+            string[] stringSeparators = new string[] { $"\r\n{space}P|" };
             List<string> arrStrPatients = new List<string>(astmFileContent.Split(stringSeparators, StringSplitOptions.RemoveEmptyEntries));
             createListOfPatients(arrStrPatients);
+            return true;
         }
 
     }
@@ -274,6 +294,8 @@ namespace BlackBox
         public string firstName {get; set;}=null;
         public string sex       {get; set;}=null;
         public string emergency { get; set; } = null;
+        private const string RESULT_HEADER = "R|";
+        private const char space = ' ';
 
         char SEPARATOR = '|';
 
@@ -291,11 +313,13 @@ namespace BlackBox
             petitionNo = getId(patientIdString);
             for (int i = 0; i < arrStringPatient.Count; i++)
             {
-                if (!arrStringPatient[i].Trim(' ').StartsWith("R|")) continue;
+                if (!arrStringPatient[i].Trim(space).StartsWith(RESULT_HEADER)) continue;
                 results.Add(new Test()
                 {
                     parameterName = getParameterName(arrStringPatient[i]),
-                    result = getResult(arrStringPatient[i])
+                    result = getResult(arrStringPatient[i]),
+                    device = deviceName,
+                    petitionNo = petitionNo
                 });
             }
 
@@ -310,13 +334,13 @@ namespace BlackBox
         public string getParameterName(string str)
         {
             string[] fields = str.Split(SEPARATOR);
-            return fields[2].Trim(' ');
+            return fields[2].Trim(space);
         }
 
         public string getResult(string str)
         {
             string[] fields = str.Split(SEPARATOR);
-            return fields[8].Trim(' ');
+            return fields[8].Trim(space);
         }
 
     }
@@ -326,6 +350,9 @@ namespace BlackBox
         public string parameterName { get; set; } = String.Empty;
         public string mapTo { get; set; } = String.Empty;
         public string result { get; set; } = String.Empty;
+        public string petitionNo { get; set; } = String.Empty;
+        public string device { get; set; } = String.Empty;
+
 
     }
 
