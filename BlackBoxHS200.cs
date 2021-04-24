@@ -19,6 +19,7 @@ namespace BlackBox
         private const string SEPARATOR = "#";
         private InterfaceHS200 hs200Interface;
         public bool testing = false;
+        
 
         // CONNECTION1: SOCKETIO
         // CONNECTION2: FILEMANAGER
@@ -57,7 +58,7 @@ namespace BlackBox
             {
                 var lisContent = getDataFromString(eventPlusData);
                 string hs200ResultString = String.Empty;
-                var fileTitle =$"Hoja_{DateTime.Now.ToString("dd_MM_yyyy")}";
+                var fileTitle =$"_{DateTime.Now.ToString("dd_MM_hhmmss")}";
                 try
                 {
                     hs200ResultString = jsonStringToAstmString(lisContent);
@@ -94,9 +95,11 @@ namespace BlackBox
             {
                 this.output1(e.Message);
             }
+
             if (lisResultStringified == String.Empty) return;
  
             this.output1(SOCKETIO_EVENTS.SAVE_PATIENTS_FINISHED_TO_DB + SEPARATOR + lisResultStringified);
+            
         }
 
         /* OUTPUT TO HS200 */
@@ -116,7 +119,10 @@ namespace BlackBox
         private string astmStringToJsonString(string strFileContent)
         {
             if (hs200Interface.device == String.Empty) return String.Empty;
-            if (!hs200Interface.StartInterface(strFileContent)) { this.output1("BLACKBOX MAL FORMATO DEL ARCHIVO");};
+            if (!hs200Interface.StartInterface(strFileContent)) {
+                this.output1("BLACKBOX MAL FORMATO DEL ARCHIVO");
+                return String.Empty;
+            };
             var results = hs200Interface.getResultToLis();
             if (testing==true)
             {
@@ -149,6 +155,8 @@ namespace BlackBox
             }
             return data.Substring(end + 1);
         }
+
+
     }
 
     public class InterfaceHS200
@@ -156,10 +164,12 @@ namespace BlackBox
         private const string START_TOKEN = "H|";
         private const string END_TOKEN = "L||N\r\n";
         private const string space = " ";
-        public List<Patients> patientList = new List<Patients>();
+        private List<Patients> patientList = new List<Patients>();
         public List<Test> serverTestList ;
         public string device = String.Empty;
-        
+        public string resultValueToFilter = "-99000000000";
+        private IEnumerable<Test> oldResult = new List<Test>();
+
 
         public InterfaceHS200(string credentials)
         {
@@ -195,7 +205,7 @@ namespace BlackBox
 
         private List<Test> filterAndTransform(List<Test> _tests)
         {
-            return _tests.Where(test => serverTestList.Select(testItem => testItem.mapTo.ToLower()).Contains(test.parameterName.ToLower()))
+            var results = _tests.Where(test => serverTestList.Select(testItem => testItem.mapTo.ToLower()).Contains(test.parameterName.ToLower()))
                          .Select(test=> {
                              test.parameterName = serverTestList
                                                     .Find(t => t.mapTo.ToLower() == test.parameterName.ToLower())
@@ -204,6 +214,7 @@ namespace BlackBox
                              return test;
                          })         
                         .ToList();
+            return results.Where(test => !test.result.Equals(resultValueToFilter)).ToList();
         }
 
         private List<Patients> extractAllTestNotAllowedByLis(List<Patients> _patientList)
@@ -224,7 +235,7 @@ namespace BlackBox
                 test.mapTo = null;
             }
         }
-
+//TODO:
         public string getResultToLis()
         {
             var options = new JsonSerializerOptions
@@ -233,9 +244,62 @@ namespace BlackBox
             };
             
             var processedList = extractAllTestNotAllowedByLis(patientList);
-            var result = processedList.Select(patient => patient.results).SelectMany(x=>x);
-            return JsonSerializer.Serialize(result, options);
+            Console.WriteLine($"PROCESSED LIST {processedList.Count()}");
+            foreach (var item in processedList)
+            {
+                Console.WriteLine($"result flatten LIST {item.petitionNo} count {item.results.Count()} ");
+                foreach ( var i in item.results)
+                {
+                    Console.WriteLine($"parametro {i.parameterName} - value: {i.result} ");
+                }
+            }
+            var result = processedList.Select(patient => patient.results).SelectMany(x => x); // flatens the array;
+            var resultchange = emitIfChanges(result);
+            if (resultchange.Count<Test>() == 0) 
+            {
+                patientList.Clear();
+                return String.Empty; 
+            }
+            var serializedValue = JsonSerializer.Serialize(resultchange, options);
+            patientList.Clear();
+            return serializedValue;
+
         }
+        // Emit Only when result is different
+        public IEnumerable<Test> emitIfChanges(IEnumerable<Test> CurrentResults)
+        {
+            List<Test> distinct = new List<Test>();
+            List<Test> neverSeen = new List<Test>();
+            bool found = false;
+            foreach (var current in CurrentResults)
+            {
+                foreach (var old in oldResult)
+                {
+                    if (current.parameterName == old.parameterName)
+                    {
+                        if (old.petitionNo.Equals(current.petitionNo))
+                        {
+                            found = true;
+                            if (!current.result.Equals(old.result))
+                            {
+                                old.result = current.result;
+                                distinct.Add(current);
+                            }
+
+                        }
+                    }
+                }
+                if (!found)
+                {
+                    distinct.Add(current);
+                    neverSeen.Add(current);
+                }
+            }
+            oldResult = oldResult.Concat<Test>(neverSeen).ToList<Test>();
+            return distinct;
+        }
+
+
 
         public string getResultToHs200(string data)
         {
@@ -251,9 +315,9 @@ namespace BlackBox
             var counter = 0;
             foreach (var patient in patientList)
             {
-                var unformatedDate = patient.birthDate==null ? defaultDate : patient.birthDate;
+              var unformatedDate = patient.birthDate==null ? defaultDate : patient.birthDate;
                 var date = DateTime.Parse(unformatedDate, null, System.Globalization.DateTimeStyles.RoundtripKind);
-                fileBody += $"{space}P|{++counter}||{patient.petitionNo}|QUIMICA|{patient.lastName}|{patient.firstName}|{date.ToString("yyyyMMdd")}|{patient.sex}|||||||||||||||||||||||||\r\n";
+                fileBody += $"{space}P|{++counter}||{patient.petitionNo}|QUIMICA|{patient.patientName} {patient.patientLastName}||{date.ToString("yyyyMMdd")}|{patient.sex}|||||||||||||||||||||||||\r\n";
                 fileBody += $"{space}{space}C|{counter}|||\r\n";
                 var testCounter = 0;
                 foreach (var t in patient.results)
@@ -289,16 +353,14 @@ namespace BlackBox
         public string petitionNo { get; set; } = String.Empty;
         public List<Test> results { get; set; } = new List<Test>();
         public string device { get; set; } = String.Empty;
-        public string birthDate {get; set;}=null;
-        public string lastName  {get; set;}=null;
-        public string firstName {get; set;}=null;
-        public string sex       {get; set;}=null;
+        public string birthDate {get; set;} = null;
+        public string patientLastName {get; set;} = null;
+        public string patientName {get; set;} = null;
+        public string sex {get; set;} = null;
         public string emergency { get; set; } = null;
         private const string RESULT_HEADER = "R|";
         private const char space = ' ';
-
         char SEPARATOR = '|';
-
         public Patients()
         {
           
@@ -352,8 +414,6 @@ namespace BlackBox
         public string result { get; set; } = String.Empty;
         public string petitionNo { get; set; } = String.Empty;
         public string device { get; set; } = String.Empty;
-
-
     }
 
     public class Credentials
