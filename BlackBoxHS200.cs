@@ -84,12 +84,16 @@ namespace BlackBox
         }
 
         /* INPUT FROM HS200 */
-        public void Input2(string strFileContent)
+        public void Input2(string strFileNamePlusFileContent)
         {
+            var fileName = getNameFromString(strFileNamePlusFileContent);
+            var fileContent = getFileContentFromString(strFileNamePlusFileContent);
+
+            if (this.hs200Interface == null) return;
             string lisResultStringified = String.Empty;
             try
             {
-                lisResultStringified = astmStringToJsonString(strFileContent);
+                lisResultStringified = astmStringToJsonString(fileContent,fileName);
             }
             catch (Exception e)
             {
@@ -116,10 +120,11 @@ namespace BlackBox
         }
 
         /*TRANSFORMATION  HS200 --> LIS  */
-        private string astmStringToJsonString(string strFileContent)
+        private string astmStringToJsonString(string strFileContent, string fileName)
         {
+            if (hs200Interface==null) return String.Empty; 
             if (hs200Interface.device == String.Empty) return String.Empty;
-            if (!hs200Interface.StartInterface(strFileContent)) {
+            if (!hs200Interface.StartInterface(strFileContent,fileName)) {
                 this.output1("BLACKBOX MAL FORMATO DEL ARCHIVO");
                 return String.Empty;
             };
@@ -156,6 +161,16 @@ namespace BlackBox
             return data.Substring(end + 1);
         }
 
+        private string getNameFromString(string data)
+        {
+           return getEventFromString(data);
+        }
+
+        private string getFileContentFromString(string data)
+        {
+            return getDataFromString(data);
+        }
+
 
     }
 
@@ -167,8 +182,8 @@ namespace BlackBox
         private List<Patients> patientList = new List<Patients>();
         public List<Test> serverTestList ;
         public string device = String.Empty;
-        public string resultValueToFilter = "-99000000000";
-        private IEnumerable<Test> oldResult = new List<Test>();
+        public static List<Test> oldResult = new List<Test>();
+        private string fileName = String.Empty;
 
 
         public InterfaceHS200(string credentials)
@@ -177,6 +192,7 @@ namespace BlackBox
             try
             {
                 localCredentials = JsonSerializer.Deserialize<Credentials>(credentials);
+                oldResult.Clear();
             }
             catch (Exception)
             {
@@ -192,7 +208,7 @@ namespace BlackBox
             {
                 if (lines.StartsWith(START_TOKEN)) continue;
                 var newPatient = new Patients();
-                newPatient.constructPatient(lines, device);
+                newPatient.constructPatient(lines, device, fileName);
                 patientList.Add(newPatient);
             }
 
@@ -214,7 +230,13 @@ namespace BlackBox
                              return test;
                          })         
                         .ToList();
-            return results.Where(test => !test.result.Equals(resultValueToFilter)).ToList();
+            return results.Where(test => isValidNumber(test.result)).ToList();
+        }
+
+        private bool isValidNumber(string value)
+        {
+            var incoming = double.Parse(value);
+            return (incoming < -100000 || incoming > 500000) ? false : true;
         }
 
         private List<Patients> extractAllTestNotAllowedByLis(List<Patients> _patientList)
@@ -271,28 +293,31 @@ namespace BlackBox
             List<Test> distinct = new List<Test>();
             List<Test> neverSeen = new List<Test>();
             bool found = false;
-            foreach (var current in CurrentResults)
+            foreach (var current in CurrentResults )
             {
+                found = false;
                 foreach (var old in oldResult)
                 {
-                    if (current.parameterName == old.parameterName)
+                    
+                    if (old.parameterName.Equals(current.parameterName) 
+                        && old.petitionNo.Equals(current.petitionNo) 
+                        && old.fileName.Equals(current.fileName))
                     {
-                        if (old.petitionNo.Equals(current.petitionNo))
+                        
+                        found = true;
+                        if (!current.result.Equals(old.result))
                         {
-                            found = true;
-                            if (!current.result.Equals(old.result))
-                            {
-                                old.result = current.result;
-                                distinct.Add(current);
-                            }
-
+                            old.result = current.result;
+                            distinct.Add(current);
                         }
+
+                        
                     }
                 }
                 if (!found)
                 {
-                    distinct.Add(current);
                     neverSeen.Add(current);
+                    distinct.Add(current);
                 }
             }
             oldResult = oldResult.Concat<Test>(neverSeen).ToList<Test>();
@@ -337,11 +362,12 @@ namespace BlackBox
             return result; 
         }
 
-        public bool StartInterface(string astmFileContent)
+        public bool StartInterface(string astmFileContent, string fileName)
         {
             if (!isValidFile(astmFileContent)) return false;
             string[] stringSeparators = new string[] { $"\r\n{space}P|" };
             List<string> arrStrPatients = new List<string>(astmFileContent.Split(stringSeparators, StringSplitOptions.RemoveEmptyEntries));
+            this.fileName = fileName;
             createListOfPatients(arrStrPatients);
             return true;
         }
@@ -357,6 +383,7 @@ namespace BlackBox
         public string patientLastName {get; set;} = null;
         public string patientName {get; set;} = null;
         public string sex {get; set;} = null;
+        public string fileName { get; set; } = String.Empty;
         public string emergency { get; set; } = null;
         private const string RESULT_HEADER = "R|";
         private const char space = ' ';
@@ -366,9 +393,10 @@ namespace BlackBox
           
         }
 
-        public void constructPatient(string patient, string deviceName)
+        public void constructPatient(string patient, string deviceName, string filename)
         {
             device = deviceName;
+            this.fileName = filename;
             char[] separators = new char[] { '\n' };
             List<string> arrStringPatient = new List<string>(patient.Split(separators, StringSplitOptions.RemoveEmptyEntries));
             var patientIdString = arrStringPatient.First<string>();
@@ -381,7 +409,8 @@ namespace BlackBox
                     parameterName = getParameterName(arrStringPatient[i]),
                     result = getResult(arrStringPatient[i]),
                     device = deviceName,
-                    petitionNo = petitionNo
+                    petitionNo = petitionNo,
+                    fileName = this.fileName 
                 });
             }
 
@@ -414,6 +443,7 @@ namespace BlackBox
         public string result { get; set; } = String.Empty;
         public string petitionNo { get; set; } = String.Empty;
         public string device { get; set; } = String.Empty;
+        public string fileName { get; set; } = String.Empty;
     }
 
     public class Credentials
